@@ -16,7 +16,7 @@ import urllib.request
 from email.message import EmailMessage
 
 TRIES, PAUSE = 3, 60          # три попытки с паузой минута: две подряд неудачные проверки не считаются случайностью
-BACKUP_MAX_HOURS = 26         # тот же порог, что у прежнего сторожа на сервере 6Б
+BACKUP_MAX_HOURS = 3          # копия снимается каждый час: старше 3 часов значит, что две копии подряд не снялись
 LABELS = {'down': 'вики-не-отвечает', 'stale': 'копия-устарела'}
 
 
@@ -74,6 +74,14 @@ def mail(subject, text):
         s.send_message(msg)
 
 
+def todo(url):
+    base = url.split('/api/', 1)[0]
+    return ('\nЧто сделать:\n1. Выяснить причину: открыть вики, проверить сервер и журнал копий.\n'
+            '2. Починить или позвать того, кто починит.\n'
+            '3. Записать случай в журнал инцидентов: что произошло, как заметили, причина, что сделали, '
+            'как учесть в будущем.\n%s/service/zhurnal-incidentov\n' % base)
+
+
 def now():
     return time.strftime('%d.%m.%Y %H:%M', time.gmtime(time.time() + 3 * 3600)) + ' МСК'
 
@@ -94,12 +102,12 @@ def main():
         if bad and not issue:
             title = 'Вики не отвечает' if kind == 'down' else 'Копия базы вики устарела'
             mail(title, '%s.\nВремя: %s\nЧто видно снаружи: %s\n\nПроверка с серверов GitHub каждые 10 минут. '
-                        'Когда все вернется, придет письмо "снова в порядке".\n' % (title, now(), info))
+                        'Когда все вернется, придет письмо "снова в порядке".\n' % (title, now(), info) + todo(url))
             gh('POST', '/issues', {'title': title + ' с ' + now(), 'labels': [LABELS[kind]], 'body': info})
             print('тревога отправлена:', kind)
         elif not bad and issue and state == 'ok':
             title = 'Вики снова в порядке' if kind == 'down' else 'Копия базы вики снова свежая'
-            mail(title, '%s.\nВремя: %s\nПроблема началась: %s\nСейчас: %s\n' % (title, now(), issue['title'], info))
+            mail(title, '%s.\nВремя: %s\nПроблема началась: %s\nСейчас: %s\n' % (title, now(), issue['title'], info) + todo(url))
             gh('PATCH', '/issues/%d' % issue['number'], {'state': 'closed'})
             print('отбой отправлен:', kind)
 
